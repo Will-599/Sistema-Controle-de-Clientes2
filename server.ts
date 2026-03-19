@@ -9,7 +9,8 @@ import jwt from "jsonwebtoken";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("client_control.db");
+const dbPath = process.env.DATABASE_PATH || "client_control.db";
+const db = new Database(dbPath);
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-123";
 const PORT = Number(process.env.PORT) || 5173;
 

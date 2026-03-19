@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: controle-de-clientes
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_PATH
+        value: /data/client_control.db
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1

@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "start": "tsx server.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -27,6 +28,7 @@
     "react-is": "^19.2.4",
     "recharts": "^3.8.0",
     "stripe": "^20.4.1",
+    "tsx": "^4.21.0",
     "vite": "^6.2.0"
   },
   "devDependencies": {
@@ -37,7 +39,6 @@
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "tailwindcss-dark-mode": "^1.1.7",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
