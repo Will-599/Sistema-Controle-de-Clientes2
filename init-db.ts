@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = path.join(__dirname, "client_control.db");
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, "client_control.db");
 const SCHEMA_PATH = path.join(__dirname, "schema.sql");
 
 async function initDb() {
