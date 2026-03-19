@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased transition-colors duration-300;
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white transition-colors;
+  }
+
+  .sidebar-link.active {
+    @apply bg-slate-900 dark:bg-indigo-600 text-white hover:bg-slate-800 dark:hover:bg-indigo-500;
+  }
+
+  .btn-primary {
+    @apply bg-slate-900 text-white px-4 py-2 rounded-xl font-medium hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95;
+  }
+}
