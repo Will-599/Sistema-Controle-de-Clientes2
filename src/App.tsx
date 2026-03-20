@@ -6,7 +6,9 @@ import { Client, Professional, Task, User, Tenant, AccessLog } from './types';
 
 // --- Components ---
 
-const Sidebar = ({ user, activeTab, setActiveTab, onLogout }: { user: User, activeTab: string, setActiveTab: (tab: string) => void, onLogout: () => void }) => {
+const Sidebar = ({ user, activeTab, setActiveTab, onLogout, onOpenTrash }: { user: User, activeTab: string, setActiveTab: (tab: string) => void, onLogout: () => void, onOpenTrash: () => void }) => {
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+
   const getMenuItems = () => {
     if (user.role === 'MasterAdmin') {
       return [
@@ -36,8 +38,13 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout }: { user: User, acti
 
   const menuItems = getMenuItems();
 
-  return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-8 z-20 transition-colors">
+  const handleNav = (id: string) => {
+    setActiveTab(id);
+    setIsMobileOpen(false);
+  };
+
+  const SidebarContent = () => (
+    <>
       <div className="flex items-center gap-3 px-2">
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">
           C
@@ -49,7 +56,7 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout }: { user: User, acti
         {menuItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => handleNav(item.id)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === item.id
               ? 'bg-indigo-50 text-indigo-700'
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
@@ -59,6 +66,13 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout }: { user: User, acti
             <span>{item.label}</span>
           </button>
         ))}
+        <button
+          onClick={() => { onOpenTrash(); setIsMobileOpen(false); }}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-slate-600 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 size={20} className="text-slate-400" />
+          <span>Lixo</span>
+        </button>
       </nav>
 
       <div className="mt-auto space-y-4">
@@ -77,7 +91,63 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout }: { user: User, acti
           </div>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar - unchanged, lg and above */}
+      <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-64 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 p-6 flex-col gap-8 z-20 transition-colors">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile: hamburger button */}
+      <button
+        onClick={() => setIsMobileOpen(true)}
+        className="lg:hidden fixed top-4 left-4 z-30 p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm text-slate-700 dark:text-slate-300"
+        aria-label="Abrir menu"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* Mobile: overlay + drawer */}
+      <AnimatePresence>
+        {isMobileOpen && (
+          <div className="lg:hidden fixed inset-0 z-40 flex">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileOpen(false)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-72 h-full bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-8 overflow-y-auto shadow-2xl"
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setIsMobileOpen(false)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                aria-label="Fechar menu"
+              >
+                <X size={20} />
+              </button>
+              <SidebarContent />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 
@@ -237,6 +307,12 @@ export default function App() {
   const [modalType, setModalType] = useState<'client' | 'professional' | 'task'>('client');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
+  const [trashItems, setTrashItems] = useState<any[]>([]);
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
+
   // Authentication logic
   const logout = () => {
     sessionStorage.removeItem('token');
@@ -294,12 +370,33 @@ export default function App() {
       setClients(await clientsRes.json());
       setProfessionals(await professionalsRes.json());
       setTasks(await tasksRes.json());
+      if (activeTab === 'trash') fetchTrash();
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchTrash = async () => {
+    try {
+      const res = await apiFetch('/api/trash');
+      if (!res.ok) {
+        console.error('Failed to fetch trash:', res.status);
+        setTrashItems([]);
+        return;
+      }
+      const data = await res.json();
+      setTrashItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching trash:", error);
+      setTrashItems([]);
+    }
+  };
+
+  useEffect(() => {
+    // fetchTrash is only called manually via the onOpenTrash callback now
+  }, []);
 
   // Derived Task Data
   const todayDate = new Date().toISOString().split('T')[0];
@@ -338,12 +435,23 @@ export default function App() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
-    await apiFetch('/api/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
+    
+    if (isEditMode && editingItem) {
+      await apiFetch(`/api/clients/${editingItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } else {
+      await apiFetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }
     setIsModalOpen(false);
+    setIsEditMode(false);
+    setEditingItem(null);
     fetchData();
   };
 
@@ -351,12 +459,23 @@ export default function App() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
-    await apiFetch('/api/professionals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
+
+    if (isEditMode && editingItem) {
+      await apiFetch(`/api/professionals/${editingItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } else {
+      await apiFetch('/api/professionals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }
     setIsModalOpen(false);
+    setIsEditMode(false);
+    setEditingItem(null);
     fetchData();
   };
 
@@ -368,12 +487,23 @@ export default function App() {
       ...formDataObj,
       clientId: selectedClientId || formDataObj.clientId
     };
-    await apiFetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
+
+    if (isEditMode && editingItem) {
+      await apiFetch(`/api/tasks/${editingItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } else {
+      await apiFetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }
     setIsModalOpen(false);
+    setIsEditMode(false);
+    setEditingItem(null);
     fetchData();
   };
 
@@ -405,6 +535,19 @@ export default function App() {
     }
   };
 
+  const restoreItem = async (type: string, id: string) => {
+    await apiFetch(`/api/trash/restore/${type}/${id}`, { method: 'POST' });
+    fetchTrash();
+    fetchData();
+  };
+
+  const permanentDelete = async (type: string, id: string) => {
+    if (confirm('AVISO: Esta ação é permanente e não pode ser desfeita. Tem a certeza?')) {
+      await apiFetch(`/api/trash/permanent/${type}/${id}`, { method: 'DELETE' });
+      fetchTrash();
+    }
+  };
+
   // Screens
   if (isCheckingAuth) {
     return (
@@ -427,9 +570,9 @@ export default function App() {
       <Sidebar user={user} activeTab={selectedClientId ? 'clients' : activeTab} setActiveTab={(tab) => {
         setActiveTab(tab);
         setSelectedClientId(null);
-      }} onLogout={logout} />
+      }} onLogout={logout} onOpenTrash={() => { fetchTrash(); setIsTrashOpen(true); }} />
 
-      <main className="flex-1 ml-64 p-10 max-w-7xl">
+      <main className="flex-1 lg:ml-64 p-4 lg:p-10 max-w-7xl pt-16 lg:pt-10">
         {/* Top Header Controls: Clock and Theme Switcher */}
         <div className="flex justify-end items-center gap-4 mb-8">
           <ClockWidget />
@@ -481,9 +624,22 @@ export default function App() {
                             <span className="flex items-center gap-2"><Briefcase size={18} className="text-indigo-500" /> {client.contractedService}</span>
                           </div>
                         </div>
-                        <button onClick={() => deleteClient(client.id)} className="p-3 bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors">
-                          <Trash2 size={20} />
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingItem(client);
+                              setIsEditMode(true);
+                              setModalType('client');
+                              setIsModalOpen(true);
+                            }}
+                            className="p-3 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 rounded-xl transition-colors"
+                          >
+                            <UserCog size={20} />
+                          </button>
+                          <button onClick={() => deleteClient(client.id)} className="p-3 bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors">
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
                       </div>
                       {client.notes && (
                         <div className="p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 text-slate-700">
@@ -527,7 +683,26 @@ export default function App() {
                                   <option value="EmProgresso">Em Progresso</option>
                                   <option value="Concluido">Concluído</option>
                                 </select>
-                                <button onClick={() => deleteTask(task.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <button
+                                  onClick={() => setViewingTask(task)}
+                                  className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                  title="Ver Detalhes"
+                                >
+                                  <ChevronRight size={20} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingItem(task);
+                                    setIsEditMode(true);
+                                    setModalType('task');
+                                    setIsModalOpen(true);
+                                  }}
+                                  className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                  title="Editar"
+                                >
+                                  <UserCog size={20} />
+                                </button>
+                                <button onClick={() => deleteTask(task.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100" title="Apagar">
                                   <Trash2 size={20} />
                                 </button>
                               </div>
@@ -727,9 +902,23 @@ export default function App() {
                         <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-xl group-hover:bg-indigo-600 group-hover:text-white dark:group-hover:bg-indigo-500 transition-colors shadow-sm">
                           {client.name.charAt(0)}
                         </div>
-                        <button className="p-2 text-slate-300 dark:text-slate-600 hover:text-slate-900 dark:hover:text-slate-300 transition-colors">
-                          <MoreVertical size={20} />
-                        </button>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingItem(client);
+                              setIsEditMode(true);
+                              setModalType('client');
+                              setIsModalOpen(true);
+                            }}
+                            className="p-2 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          >
+                            <UserCog size={20} />
+                          </button>
+                          <button className="p-2 text-slate-300 dark:text-slate-600 hover:text-slate-900 dark:hover:text-slate-300 transition-colors">
+                            <MoreVertical size={20} />
+                          </button>
+                        </div>
                       </div>
                       <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-1.5">{client.name}</h4>
                       <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-2 mb-5">
@@ -779,9 +968,22 @@ export default function App() {
                       <p className="text-sm text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider mt-0.5">{pro.role}</p>
                       <p className="text-sm text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1.5 mt-2"><Phone size={14} /> {pro.phone}</p>
                     </div>
-                    <button onClick={() => deleteProfessional(pro.id)} className="p-3 bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 dark:hover:text-red-400 rounded-xl transition-colors">
-                      <Trash2 size={20} />
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingItem(pro);
+                          setIsEditMode(true);
+                          setModalType('professional');
+                          setIsModalOpen(true);
+                        }}
+                        className="p-3 bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl transition-colors"
+                      >
+                        <UserCog size={20} />
+                      </button>
+                      <button onClick={() => deleteProfessional(pro.id)} className="p-3 bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 dark:hover:text-red-400 rounded-xl transition-colors">
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </motion.div>
                 ))}
               </div>
@@ -817,7 +1019,9 @@ export default function App() {
             >
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
-                  {modalType === 'client' ? 'Novo Cliente' : modalType === 'professional' ? 'Novo Profissional' : 'Nova Tarefa'}
+                  {isEditMode
+                    ? (modalType === 'client' ? 'Editar Cliente' : modalType === 'professional' ? 'Editar Profissional' : 'Editar Tarefa')
+                    : (modalType === 'client' ? 'Novo Cliente' : modalType === 'professional' ? 'Novo Profissional' : 'Nova Tarefa')}
                 </h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                   <X size={20} />
@@ -827,21 +1031,21 @@ export default function App() {
               <form onSubmit={modalType === 'client' ? handleCreateClient : modalType === 'professional' ? handleCreateProfessional : handleCreateTask} className="space-y-5">
                 {modalType === 'client' ? (
                   <>
-                    <Input label="Nome Completo" name="name" required />
-                    <Input label="Número de Telefone" name="phone" required />
-                    <Input label="Serviço Contratado" name="contractedService" required />
+                    <Input label="Nome Completo" name="name" required defaultValue={editingItem?.name} />
+                    <Input label="Número de Telefone" name="phone" required defaultValue={editingItem?.phone} />
+                    <Input label="Serviço Contratado" name="contractedService" required defaultValue={editingItem?.contractedService} />
                     <div>
                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Notas</label>
-                      <textarea name="notes" rows={3} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all resize-none font-medium" />
+                      <textarea name="notes" rows={3} defaultValue={editingItem?.notes} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all resize-none font-medium" />
                     </div>
                   </>
                 ) : modalType === 'professional' ? (
                   <>
-                    <Input label="Nome" name="name" required />
-                    <Input label="Telefone" name="phone" required />
+                    <Input label="Nome" name="name" required defaultValue={editingItem?.name} />
+                    <Input label="Telefone" name="phone" required defaultValue={editingItem?.phone} />
                     <div>
                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Cargo</label>
-                      <select name="role" required className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
+                      <select name="role" required defaultValue={editingItem?.role || "Técnico"} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
                         <option value="Técnico">Técnico</option>
                         <option value="Designer">Designer</option>
                         <option value="Suporte">Suporte</option>
@@ -851,15 +1055,15 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <Input label="Nome do Serviço" name="serviceName" required />
+                    <Input label="Nome do Serviço" name="serviceName" required defaultValue={editingItem?.serviceName} />
                     <div className="grid grid-cols-2 gap-4">
-                      <Input label="Data" name="date" type="date" required defaultValue={todayDate} />
-                      <Input label="Hora" name="time" type="time" />
+                      <Input label="Data" name="date" type="date" required defaultValue={editingItem?.date || todayDate} />
+                      <Input label="Hora" name="time" type="time" defaultValue={editingItem?.time} />
                     </div>
                     {!selectedClientId && (
                       <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Cliente</label>
-                        <select name="clientId" required className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
+                        <select name="clientId" required defaultValue={editingItem?.clientId || ""} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
                           <option value="">Selecione um cliente...</option>
                           {clients.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
@@ -869,7 +1073,7 @@ export default function App() {
                     )}
                     <div>
                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Profissional Responsável</label>
-                      <select name="professionalId" required className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
+                      <select name="professionalId" required defaultValue={editingItem?.professionalId || ""} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all font-medium appearance-none">
                         <option value="">Selecione um profissional...</option>
                         {professionals.map(pro => (
                           <option key={pro.id} value={pro.id}>{pro.name} ({pro.role})</option>
@@ -878,15 +1082,146 @@ export default function App() {
                     </div>
                     <div>
                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Notas</label>
-                      <textarea name="notes" rows={2} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all resize-none font-medium" />
+                      <textarea name="notes" rows={2} defaultValue={editingItem?.notes} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/50 focus:border-indigo-500 transition-all resize-none font-medium" />
                     </div>
                   </>
                 )}
                 <div className="pt-4 flex gap-4">
                   <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-5 py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Cancelar</button>
-                  <button type="submit" className="flex-1 px-5 py-3.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">Criar {modalType === 'client' ? 'Cliente' : modalType === 'professional' ? 'Profissional' : 'Tarefa'}</button>
+                  <button type="submit" className="flex-1 px-5 py-3.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">
+                    {isEditMode ? 'Guardar Alterações' : `Criar ${modalType === 'client' ? 'Cliente' : modalType === 'professional' ? 'Profissional' : 'Tarefa'}`}
+                  </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Trash Modal */}
+      <AnimatePresence>
+        {isTrashOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsTrashOpen(false)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 60, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 60, scale: 0.97 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative bg-white dark:bg-slate-900 w-full sm:max-w-2xl rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl overflow-hidden transition-colors max-h-[85vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between px-8 pt-8 pb-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                <div>
+                  <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">Lixo</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">Itens apagados recentemente</p>
+                </div>
+                <button
+                  onClick={() => setIsTrashOpen(false)}
+                  className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {trashItems.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Trash2 size={28} className="text-slate-300 dark:text-slate-600" />
+                    </div>
+                    <p className="text-slate-400 dark:text-slate-500 font-medium">O lixo está vazio.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {trashItems.map((item) => (
+                      <div key={`${item.type}-${item.id}`} className="px-8 py-5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${item.type === 'client' ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'}`}>
+                            {item.type === 'client' ? <Users size={18} /> : <Calendar size={18} />}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">{item.title}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                              {item.type === 'client' ? 'Cliente' : 'Tarefa'} • Apagado em {new Date(item.deletedAt).toLocaleDateString('pt-PT')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-4">
+                          <button
+                            onClick={() => { restoreItem(item.type, item.id); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 font-bold rounded-lg text-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                          >
+                            <Activity size={14} /> Restaurar
+                          </button>
+                          <button
+                            onClick={() => { permanentDelete(item.type, item.id); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-bold rounded-lg text-xs hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                          >
+                            <Trash2 size={14} /> Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Task View Modal */}
+      <AnimatePresence>
+        {viewingTask && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewingTask(null)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2rem] shadow-2xl p-8 overflow-hidden transition-colors">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-3xl font-display font-bold text-slate-900 dark:text-white">Detalhes da Tarefa</h3>
+                <button onClick={() => setViewingTask(null)} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="space-y-6">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Serviço</label>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">{viewingTask.serviceName}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Data</label>
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">{viewingTask.date}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Hora</label>
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">{viewingTask.time || 'Não definida'}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Profissional</label>
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">{viewingTask.professionalName}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estado</label>
+                    <p className="font-semibold text-indigo-600 dark:text-indigo-400">{viewingTask.status}</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Notas</label>
+                  <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 whitespace-pre-wrap min-h-[100px]">
+                    {viewingTask.notes || 'Sem notas adicionais.'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8">
+                <button onClick={() => setViewingTask(null)} className="w-full py-4 bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 font-bold rounded-2xl hover:opacity-90 transition-all">Fechar</button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -1585,6 +1920,64 @@ function MasterBillingScreen({ apiFetch }: { key?: string, apiFetch: any }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// --- Trash Screen Component ---
+function TrashScreen({ trashItems, onRestore, onPermanentDelete }: { trashItems: any[], onRestore: any, onPermanentDelete: any }) {
+  return (
+    <motion.div
+      key="trash"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-8"
+    >
+      <header>
+        <h2 className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">Lixo</h2>
+        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Itens removidos recentemente. Pode restaurá-los ou eliminá-los permanentemente.</p>
+      </header>
+
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+        {trashItems.length === 0 ? (
+          <div className="p-20 text-center text-slate-400 font-medium font-display">
+            O seu lixo está vazio.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-50 dark:divide-slate-800/50">
+            {trashItems.map((item) => (
+              <div key={`${item.type}-${item.id}`} className="p-6 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                <div className="flex items-center gap-6">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${item.type === 'client' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                    {item.type === 'client' ? <Users size={24} /> : <Calendar size={24} />}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg text-slate-900 dark:text-white uppercase tracking-tight">{item.title}</h4>
+                    <p className="text-sm text-slate-500 font-medium">
+                      Tipo: <span className="font-bold text-slate-700 dark:text-slate-300">{item.type === 'client' ? 'Cliente' : 'Tarefa'}</span> • Apagado em: {new Date(item.deletedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => onRestore(item.type, item.id)}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl text-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                  >
+                    <Activity size={16} /> Restaurar
+                  </button>
+                  <button
+                    onClick={() => onPermanentDelete(item.type, item.id)}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-bold rounded-xl text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                  >
+                    <Trash2 size={16} /> Eliminar Permanente
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 

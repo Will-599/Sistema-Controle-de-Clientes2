@@ -279,6 +279,7 @@ async function startServer() {
   app.use("/api/clients", requireAuth);
   app.use("/api/professionals", requireAuth);
   app.use("/api/tasks", requireAuth);
+  app.use("/api/trash", requireAuth);
   app.use("/api/admin", requireAuth);
   app.use("/api/tenant", requireAuth);
 
@@ -294,10 +295,10 @@ async function startServer() {
   app.get("/api/clients", (req: any, res) => {
     let clients = [];
     if (req.user.role === 'MasterAdmin' && !req.query.targetTenantId) {
-      clients = db.prepare("SELECT * FROM clients ORDER BY createdAt DESC").all();
+      clients = db.prepare("SELECT * FROM clients WHERE deleted = 0 ORDER BY createdAt DESC").all();
     } else {
       const tid = getTenantId(req);
-      clients = db.prepare("SELECT * FROM clients WHERE tenantId = ? ORDER BY createdAt DESC").all(tid);
+      clients = db.prepare("SELECT * FROM clients WHERE tenantId = ? AND deleted = 0 ORDER BY createdAt DESC").all(tid);
     }
     res.json(clients);
   });
@@ -335,7 +336,9 @@ async function startServer() {
     const client = db.prepare("SELECT tenantId FROM clients WHERE id = ?").get(req.params.id) as any;
     if (req.user.role !== 'MasterAdmin' && client?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
 
-    db.prepare("DELETE FROM clients WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE clients SET deleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    // Also soft delete tasks of this client
+    db.prepare("UPDATE tasks SET deleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE clientId = ?").run(req.params.id);
     res.status(204).end();
   });
 
@@ -361,6 +364,16 @@ async function startServer() {
     res.status(201).json({ id, tenantId: tid, name, phone, role });
   });
 
+  app.put("/api/professionals/:id", (req: any, res) => {
+    const { name, phone, role } = req.body;
+    const pro = db.prepare("SELECT tenantId FROM professionals WHERE id = ?").get(req.params.id) as any;
+    if (req.user.role !== 'MasterAdmin' && pro?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
+
+    db.prepare("UPDATE professionals SET name = ?, phone = ?, role = ? WHERE id = ?")
+      .run(name, phone, role, req.params.id);
+    res.json({ id: req.params.id, name, phone, role });
+  });
+
   app.delete("/api/professionals/:id", (req: any, res) => {
     const pro = db.prepare("SELECT tenantId FROM professionals WHERE id = ?").get(req.params.id) as any;
     if (req.user.role !== 'MasterAdmin' && pro?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
@@ -377,10 +390,11 @@ async function startServer() {
       FROM tasks 
       JOIN clients ON tasks.clientId = clients.id 
       JOIN professionals ON tasks.professionalId = professionals.id
+      WHERE tasks.deleted = 0
     `;
     const params = [];
 
-    query += " WHERE 1=1";
+    query += "";
 
     if (req.user.role !== 'MasterAdmin') {
       query += " AND tasks.tenantId = ?";
@@ -423,11 +437,68 @@ async function startServer() {
     res.json({ id: req.params.id, status });
   });
 
+  app.put("/api/tasks/:id", (req: any, res) => {
+    const { clientId, professionalId, serviceName, date, time, notes } = req.body;
+    const task = db.prepare("SELECT tenantId FROM tasks WHERE id = ?").get(req.params.id) as any;
+    if (req.user.role !== 'MasterAdmin' && task?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
+
+    db.prepare("UPDATE tasks SET clientId = ?, professionalId = ?, serviceName = ?, date = ?, time = ?, notes = ? WHERE id = ?")
+      .run(clientId, professionalId, serviceName, date, time, notes, req.params.id);
+    res.json({ id: req.params.id, clientId, professionalId, serviceName, date, time, notes });
+  });
+
   app.delete("/api/tasks/:id", (req: any, res) => {
     const task = db.prepare("SELECT tenantId FROM tasks WHERE id = ?").get(req.params.id) as any;
     if (req.user.role !== 'MasterAdmin' && task?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
 
-    db.prepare("DELETE FROM tasks WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE tasks SET deleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    res.status(204).end();
+  });
+
+  // Trash
+  app.get("/api/trash", (req: any, res) => {
+    try {
+      let clients: any[] = [];
+      let tasks: any[] = [];
+      if (req.user.role === 'MasterAdmin') {
+        clients = db.prepare("SELECT 'client' as type, id, name as title, deletedAt FROM clients WHERE deleted = 1").all();
+        tasks = db.prepare("SELECT 'task' as type, id, serviceName as title, deletedAt FROM tasks WHERE deleted = 1").all();
+      } else {
+        const tid = req.user.tenantId;
+        if (!tid) return res.json([]);
+        clients = db.prepare("SELECT 'client' as type, id, name as title, deletedAt FROM clients WHERE tenantId = ? AND deleted = 1").all(tid);
+        tasks = db.prepare("SELECT 'task' as type, id, serviceName as title, deletedAt FROM tasks WHERE tenantId = ? AND deleted = 1").all(tid);
+      }
+      res.json([...clients, ...tasks].sort((a: any, b: any) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime()));
+    } catch (e: any) {
+      console.error('[TRASH ERROR]', e);
+      res.status(500).json({ error: 'Erro ao carregar lixo', details: e.message });
+    }
+  });
+
+  app.post("/api/trash/restore/:type/:id", (req: any, res) => {
+    const { type, id } = req.params;
+    const table = type === 'client' ? 'clients' : 'tasks';
+    const item = db.prepare(`SELECT tenantId FROM ${table} WHERE id = ?`).get(id) as any;
+    if (req.user.role !== 'MasterAdmin' && item?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
+
+    db.prepare(`UPDATE ${table} SET deleted = 0, deletedAt = NULL WHERE id = ?`).run(id);
+    
+    // If restoring a client, also restore its tasks that were deleted at the same time (optional but good)
+    if (type === 'client') {
+        db.prepare("UPDATE tasks SET deleted = 0, deletedAt = NULL WHERE clientId = ? AND deleted = 1").run(id);
+    }
+    
+    res.json({ success: true });
+  });
+
+  app.delete("/api/trash/permanent/:type/:id", (req: any, res) => {
+    const { type, id } = req.params;
+    const table = type === 'client' ? 'clients' : 'tasks';
+    const item = db.prepare(`SELECT tenantId FROM ${table} WHERE id = ?`).get(id) as any;
+    if (req.user.role !== 'MasterAdmin' && item?.tenantId !== req.user.tenantId) return res.status(403).json({ error: "Forbidden" });
+
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     res.status(204).end();
   });
 

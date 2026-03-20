@@ -37,6 +37,8 @@ export interface Client {
   phone: string;
   contractedService: string;
   notes: string;
+  deleted?: number;
+  deletedAt?: string;
   createdAt: string;
 }
 
@@ -61,5 +63,7 @@ export interface Task {
   time?: string;
   status: 'Pendente' | 'EmProgresso' | 'Concluido';
   notes: string;
+  deleted?: number;
+  deletedAt?: string;
   createdAt: string;
 }

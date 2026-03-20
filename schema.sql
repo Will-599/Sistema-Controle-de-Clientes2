@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS clients (
     phone TEXT,
     contractedService TEXT,
     notes TEXT,
+    deleted INTEGER DEFAULT 0,
+    deletedAt DATETIME,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenantId) REFERENCES tenants(id) ON DELETE CASCADE
 );
@@ -55,6 +57,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     time TEXT,
     status TEXT DEFAULT 'Pendente',
     notes TEXT,
+    deleted INTEGER DEFAULT 0,
+    deletedAt DATETIME,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (clientId) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY (professionalId) REFERENCES professionals(id) ON DELETE CASCADE,
