@@ -16,6 +16,27 @@ const PORT = Number(process.env.PORT) || 5173;
 
 console.log(`[BOOT] Database initialized. Target PORT: ${PORT}`);
 
+// --- Auto-migration: safely add missing columns ---
+const runMigrations = () => {
+  const migrations = [
+    "ALTER TABLE clients ADD COLUMN deleted INTEGER DEFAULT 0",
+    "ALTER TABLE clients ADD COLUMN deletedAt DATETIME",
+    "ALTER TABLE tasks ADD COLUMN deleted INTEGER DEFAULT 0",
+    "ALTER TABLE tasks ADD COLUMN deletedAt DATETIME",
+  ];
+  for (const sql of migrations) {
+    try {
+      db.prepare(sql).run();
+      console.log(`[MIGRATION] Applied: ${sql}`);
+    } catch (e: any) {
+      if (!e.message.includes("duplicate column name")) {
+        console.error(`[MIGRATION ERROR] ${e.message}`);
+      }
+    }
+  }
+};
+runMigrations();
+
 // Simple Master Admin Elevation Check
 const ensureAdmin = db.transaction(() => {
   db.prepare("UPDATE users SET role = 'MasterAdmin', tenantId = NULL WHERE email = 'admin@admin.com'").run();
