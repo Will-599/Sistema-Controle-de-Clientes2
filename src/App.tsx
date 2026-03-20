@@ -367,10 +367,24 @@ export default function App() {
         apiFetch('/api/professionals'),
         apiFetch('/api/tasks')
       ]);
-      setClients(await clientsRes.json());
-      setProfessionals(await professionalsRes.json());
-      setTasks(await tasksRes.json());
-      if (activeTab === 'trash') fetchTrash();
+
+      // Safely parse each response — fall back to [] if the API returns an error
+      const safeJson = async (res: Response) => {
+        if (!res.ok) {
+          console.error(`[fetchData] API error ${res.status}: ${res.url}`);
+          return [];
+        }
+        try {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        } catch {
+          return [];
+        }
+      };
+
+      setClients(await safeJson(clientsRes));
+      setProfessionals(await safeJson(professionalsRes));
+      setTasks(await safeJson(tasksRes));
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
