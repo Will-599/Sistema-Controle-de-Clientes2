@@ -61,9 +61,47 @@ export interface Task {
   serviceName: string;
   date: string;
   time?: string;
-  status: 'Pendente' | 'EmProgresso' | 'Concluido';
+  status: 'Pendente' | 'EmProgresso' | 'Concluido' | 'Aguardando início' | 'Em andamento' | 'Em revisão' | 'Concluído' | 'Cancelado';
+  priority?: 'baixa' | 'média' | 'alta' | 'urgente';
   notes: string;
   deleted?: number;
   deletedAt?: string;
+  createdAt: string;
+}
+
+export interface MetricsData {
+  totalClients: number;
+  newClientsThisMonth: number;
+  tasksPending: number;
+  tasksInProgress: number;
+  tasksCompleted: number;
+  recentClients: Client[];
+  tasksByStatus: { status: string; count: number }[];
+  clientsGrowth: { month: string; count: number }[];
+}
+
+export interface ActivityLog {
+  id: string;
+  tenantId: string;
+  entityType: 'CLIENTE' | 'SERVIÇO' | 'SISTEMA';
+  entityId: string;
+  action: 'CRIOU' | 'EDITOU' | 'APAGOU' | 'MUDOU_STATUS' | 'COMENTOU';
+  oldValue?: string;
+  newValue?: string;
+  userId: string;
+  userEmail?: string;
+  timestamp: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  tenantId: string;
+  type: 'PRAZO_PROXIMO' | 'PRAZO_ATRASADO' | 'NOVO_SERVICO' | 'STATUS_ALTERADO' | 'CLIENTE_INATIVO';
+  title: string;
+  message: string;
+  entityType?: 'CLIENTE' | 'SERVIÇO';
+  entityId?: string;
+  read: number; // 0 ou 1
   createdAt: string;
 }

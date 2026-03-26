@@ -3,6 +3,12 @@ import { LayoutDashboard, Users, UserCog, Calendar, Plus, Search, Phone, Briefca
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { Client, Professional, Task, User, Tenant, AccessLog } from './types';
+import { useMetrics } from './hooks/useMetrics';
+import { DashboardMetrics } from './components/DashboardMetrics';
+import { KanbanBoard } from './components/KanbanBoard';
+import { ActivityHistory } from './components/ActivityHistory';
+import { NotificationBell } from './components/NotificationBell';
+import { NotificationsPage } from './components/NotificationsPage';
 
 // --- Components ---
 
@@ -14,6 +20,8 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout, onOpenTrash }: { use
       return [
         { id: 'dashboard', icon: LayoutDashboard, label: 'Painel Global' },
         { id: 'clients', icon: Users, label: 'Clientes' },
+        { id: 'kanban', icon: Calendar, label: 'Quadro Kanban' },
+        { id: 'history', icon: Activity, label: 'Histórico' },
         { id: 'professionals', icon: UserCog, label: 'Profissionais' },
         { id: 'settings', icon: Settings, label: 'Configurações' },
       ];
@@ -22,8 +30,10 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout, onOpenTrash }: { use
       return [
         { id: 'dashboard', icon: LayoutDashboard, label: 'Painel' },
         { id: 'clients', icon: Users, label: 'Clientes' },
+        { id: 'kanban', icon: Calendar, label: 'Quadro Kanban' },
+        { id: 'history', icon: Activity, label: 'Histórico' },
         { id: 'professionals', icon: UserCog, label: 'Profissionais' },
-        { id: 'tenant_users', icon: ShieldCheck, label: 'Equipa' },
+        { id: 'tenant_users', icon: ShieldCheck, label: 'Equipe' },
         { id: 'tenant_billing', icon: Receipt, label: 'Assinatura' },
         { id: 'settings', icon: Settings, label: 'Configurações' },
       ];
@@ -31,6 +41,8 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout, onOpenTrash }: { use
     return [
       { id: 'dashboard', icon: LayoutDashboard, label: 'Painel' },
       { id: 'clients', icon: Users, label: 'Clientes' },
+      { id: 'kanban', icon: Calendar, label: 'Quadro Kanban' },
+      { id: 'history', icon: Activity, label: 'Histórico' },
       { id: 'professionals', icon: UserCog, label: 'Profissionais' },
       { id: 'settings', icon: Settings, label: 'Configurações' },
     ];
@@ -49,7 +61,7 @@ const Sidebar = ({ user, activeTab, setActiveTab, onLogout, onOpenTrash }: { use
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">
           C
         </div>
-        <h1 className="font-display font-bold text-xl tracking-tight text-slate-900 dark:text-white">ControleClientes</h1>
+        <h1 className="font-display font-bold text-xl tracking-tight text-slate-900 dark:text-white">Controle de Clientes</h1>
       </div>
 
       <nav className="flex flex-col gap-2 flex-1">
@@ -302,6 +314,7 @@ export default function App() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+  const { metrics, loading: metricsLoading, refetch: refetchMetrics } = useMetrics(token);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'client' | 'professional' | 'task'>('client');
@@ -449,7 +462,7 @@ export default function App() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
-    
+
     if (isEditMode && editingItem) {
       await apiFetch(`/api/clients/${editingItem.id}`, {
         method: 'PUT',
@@ -590,6 +603,7 @@ export default function App() {
         {/* Top Header Controls: Clock and Theme Switcher */}
         <div className="flex justify-end items-center gap-4 mb-8">
           <ClockWidget />
+          <NotificationBell token={token} onOpenAll={() => { setActiveTab('notifications'); setSelectedClientId(null); }} />
           <ThemeToggle isDark={isDark} toggleTheme={toggleTheme} />
         </div>
 
@@ -739,6 +753,48 @@ export default function App() {
             >
               <header>
                 <motion.h2 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">Painel Operacional</motion.h2>
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="text-slate-500 dark:text-slate-400 mt-2 font-medium">O seu resumo de métricas de negócios em tempo real.</motion.p>
+              </header>
+
+              {metricsLoading ? (
+                <div className="flex items-center justify-center p-20">
+                  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                </div>
+              ) : !metrics ? (
+                <div className="flex items-center justify-center p-20 text-red-500 font-medium text-lg">
+                  Ocorreu um erro interno ao carregar o painel.
+                </div>
+              ) : (
+                <DashboardMetrics
+                  metrics={metrics}
+                  isDark={isDark}
+                  tasks={tasks}
+                  onAddTask={() => { setEditingItem(null); setIsEditMode(false); setModalType('task'); setIsModalOpen(true); }}
+                  onEditTask={(task) => { setEditingItem(task); setIsEditMode(true); setModalType('task'); setIsModalOpen(true); }}
+                  onDeleteTask={async (id) => {
+                    if (!window.confirm('Deseja excluir este serviço?')) return;
+                    try {
+                      const res = await fetch('/api/tasks/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+                      if (res.ok) {
+                        fetchData();
+                        if (typeof refetchMetrics === 'function') refetchMetrics();
+                      }
+                    } catch (e) { console.error('Erro ao excluir tarefa:', e); }
+                  }}
+                  onUpdateStatus={updateTaskStatus}
+                />
+              )}
+            </motion.div>
+          ) : activeTab === 'dashboard-legacy' ? (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-10"
+            >
+              <header>
+                <motion.h2 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">Painel Operacional</motion.h2>
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="text-slate-500 dark:text-slate-400 mt-2 font-medium">O seu resumo de atividades para hoje, {new Date().toLocaleDateString('pt-PT', { weekday: 'long', month: 'long', day: 'numeric' })}.</motion.p>
               </header>
 
@@ -865,6 +921,51 @@ export default function App() {
                 </motion.div>
               </div>
             </motion.div>
+          ) : activeTab === 'kanban' ? (
+            <motion.div
+              key="kanban"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="h-full flex flex-col"
+            >
+              <header className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">Quadro Kanban</h2>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Acompanhe e mova os serviços pelas etapas do processo.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingItem(null);
+                    setIsEditMode(false);
+                    setModalType('task');
+                    setIsModalOpen(true);
+                  }}
+                  className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
+                >
+                  <Plus size={20} />
+                  Nova Tarefa
+                </button>
+              </header>
+              <div className="flex-1 w-full relative min-h-[500px]">
+                <KanbanBoard
+                  tasks={tasks}
+                  updateTaskStatus={updateTaskStatus}
+                  onTaskClick={(task) => {
+                    setEditingItem(task);
+                    setIsEditMode(true);
+                    setModalType('task');
+                    setIsModalOpen(true);
+                  }}
+                />
+              </div>
+            </motion.div>
+          ) : activeTab === 'history' ? (
+            <div className="h-full">
+              <ActivityHistory token={token} />
+            </div>
+          ) : activeTab === 'notifications' ? (
+            <NotificationsPage token={token} />
           ) : activeTab === 'clients' ? (
             <motion.div
               key="clients"
@@ -957,7 +1058,7 @@ export default function App() {
               <header className="flex items-center justify-between">
                 <div>
                   <h2 className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">Profissionais</h2>
-                  <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Gerencie a sua equipa e prestadores de serviços.</p>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Gerencie a sua equipe e prestadores de serviços.</p>
                 </div>
                 <button
                   onClick={() => {
@@ -2073,7 +2174,7 @@ function TenantUsersScreen({ apiFetch }: { key?: string, apiFetch: any }) {
     <motion.div key="tenant_users" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8">
       <header className="flex justify-between items-center">
         <div>
-          <h2 className="text-4xl font-display font-bold text-slate-900 dark:text-white">Acessos da Equipa</h2>
+          <h2 className="text-4xl font-display font-bold text-slate-900 dark:text-white">Acessos da Equipe</h2>
           <p className="text-slate-500 mt-2 font-medium">Dê acesso à plataforma aos seus colaboradores.</p>
         </div>
         <button className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20" onClick={() => alert("A criar utilizador... [A ser conectado ao modal em futuras iterações]")}>
